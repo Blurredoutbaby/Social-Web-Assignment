@@ -1,0 +1,592 @@
+---
+title: "COMP3020 Social Web Analytics"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r analysis, message=FALSE}
+library(atrrr)
+# COLLECTING OUR POSTS ====
+
+start_date <- "2025-09-28"
+end_date <- "2026-09-30"
+
+
+#Searching for relevant post material on bluesky
+ai_posts <- search_skeet(
+  "AI",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+dim(ai_posts)
+names(ai_posts)
+
+
+artificial_intelligence_posts <- search_skeet(
+  "artificial intelligence",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+chatgpt_posts <- search_skeet(
+  "ChatGPT",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+openai_posts <- search_skeet(
+  "OpenAI",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+generative_ai_posts <- search_skeet(
+  "generative AI",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+llm_posts <- search_skeet(
+  "LLM",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+machine_learning_posts <- search_skeet(
+  "machine learning",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+large_language_model_posts <- search_skeet(
+  "large language model",
+  sort = "latest",
+  since = start_date,
+  until = end_date,
+  limit = 200
+)
+
+
+
+# Combining the posts into one database
+
+# Combine all search results into one master dataset.
+ai_posts_all <- rbind(
+  ai_posts,
+  artificial_intelligence_posts,
+  chatgpt_posts,
+  openai_posts,
+  generative_ai_posts,
+  machine_learning_posts,
+  large_language_model_posts,
+  llm_posts
+)
+
+
+#Removing duplicate posts
+
+ai_posts_all <- ai_posts_all[!duplicated(ai_posts_all$uri), ]
+
+dim(ai_posts_all)
+
+str(ai_posts_all[, c("author_handle", "mentions", "in_reply_to", "quotes")])
+
+# Checking for missing values in variables
+
+sum(is.na(ai_posts_all$text))
+
+sum(is.na(ai_posts_all$like_count))
+
+sum(is.na(ai_posts_all$reply_count))
+
+sum(is.na(ai_posts_all$repost_count))
+
+sum(is.na(ai_posts_all$indexed_at))
+sum(is.null(ai_posts_all$tags))
+
+sum(ai_posts_all$text == "")
+sum(!is.na(ai_posts_all$in_reply_to))
+sum(!is.na(ai_posts_all$quotes))
+sum(!sapply(ai_posts_all$mentions, is.null))
+
+ai_text <- ai_posts_all$text
+ai_text <- ai_text[ai_text != ""]
+length(ai_text)
+# Count posts with empty text.
+sum(ai_posts_all$text == "")
+
+# Display the first 20 text values.
+head(ai_posts_all$text, 20)
+
+# Count zero-like posts.
+sum(ai_posts_all$like_count == 0)
+
+# Count zero-reply posts.
+sum(ai_posts_all$reply_count == 0)
+
+# Count zero-repost posts.
+sum(ai_posts_all$repost_count == 0)
+
+
+
+# Create a dataset containing only posts with text.
+ai_text_data <- ai_posts_all[ai_posts_all$text != "", ]
+
+# Check how many posts remain.
+nrow(ai_text_data)
+
+
+
+#Cleaning the data
+
+ai_clean <- ai_posts_all
+
+# Count how many duplicate post URIs exist.
+sum(duplicated(ai_clean$uri))
+dim(ai_clean)
+sum(duplicated(ai_clean$uri))
+
+
+# Create a dataset containing only posts with actual text.
+ai_text <- ai_clean[ai_clean$text != "", ]
+
+# Check how many posts remain.
+nrow(ai_text)
+
+
+# Count posts that contain only whitespace.
+sum(trimws(ai_clean$text) == "")
+# Keep posts that contain actual text after removing surrounding whitespace.
+ai_text <- ai_clean[trimws(ai_clean$text) != "", ]
+
+# Check the number of usable text posts.
+nrow(ai_text)
+sum(trimws(ai_clean$text) == "")
+
+
+
+#text preprocessing
+
+library(tm)
+library(SnowballC)
+
+# Creating a corpus from the text of our Bluesky posts.
+ai_corpus <- Corpus(
+  VectorSource(ai_text$text)
+)
+
+ai_corpus <- tm_map(
+  ai_corpus,
+  content_transformer(tolower)
+)
+length(ai_corpus)
+
+# Remove URLs from the posts.
+ai_corpus <- tm_map(
+  ai_corpus,
+  content_transformer(function(x) gsub("http[^[:space:]]*", "", x))
+)
+
+ai_corpus <- tm_map(
+  ai_corpus,
+  removeNumbers
+)
+
+ai_corpus <- tm_map(
+  ai_corpus,
+  removePunctuation
+)
+#Removing filler words (stopwords)
+custom_stopwords <- c(
+  stopwords("en"),
+  "use",
+  "like",
+  "can",
+  "just",
+  "new",
+  "will",
+  "make",
+  "get",
+  "also",
+  "much",
+  "one",
+  "still"
+)
+
+ai_corpus <- tm_map(
+  ai_corpus,
+  removeWords,
+  custom_stopwords
+)
+
+ai_corpus <- tm_map(
+  ai_corpus,
+  stripWhitespace
+)
+
+ai_corpus <- tm_map(
+  ai_corpus,
+  stemDocument,
+  language = "english"
+)
+
+
+inspect(ai_corpus[1])
+inspect(ai_corpus[1:5])
+
+# Display the number of documents in the cleaned corpus.
+length(ai_corpus)
+
+
+# Create a Term-Document Matrix from our cleaned corpus.
+ai_tdm <- TermDocumentMatrix(ai_corpus)
+
+dim(ai_tdm)
+
+
+# Convert the TDM into a standard R matrix.
+ai_matrix <- as.matrix(ai_tdm)
+
+dim(ai_matrix)
+word_frequency <- rowSums(ai_matrix)
+head(word_frequency, 20)
+
+word_frequency_sorted <- sort(
+  word_frequency,
+  decreasing = TRUE
+)
+head(word_frequency_sorted, 20)
+
+
+
+
+
+
+library(wordcloud)
+
+top80_words <- head(word_frequency_sorted, 80)
+
+# Display the top 80 words and their frequencies.
+top80_words
+wordcloud(
+  words = names(top80_words),
+  freq = as.numeric(top80_words),
+  min.freq = 1,
+  max.words = 80,
+  random.order = FALSE
+)
+# TFIDF weighted wordcloud
+
+ai_tfidf <- weightTfIdf(ai_tdm)
+
+# Convert the TF-IDF weighted matrix into a standard R matrix.
+ai_tfidf_matrix <- as.matrix(ai_tfidf)
+
+# Calculate the total TF-IDF weight for each term.
+tfidf_frequency <- rowSums(ai_tfidf_matrix)
+
+
+# Sort the terms from highest to lowest TF-IDF weight.
+tfidf_frequency_sorted <- sort(
+  tfidf_frequency,
+  decreasing = TRUE
+)
+
+# Display the 20 terms with the highest overall TF-IDF weight.
+head(tfidf_frequency_sorted, 20)
+
+
+# Select the 80 terms with the highest TF-IDF weights.
+top80_tfidf <- head(tfidf_frequency_sorted, 80)
+
+# Create a word cloud using TF-IDF weights.
+wordcloud(
+  words = names(top80_tfidf),
+  freq = as.numeric(top80_tfidf),
+  min.freq = 1,
+  max.words = 80,
+  random.order = FALSE
+)
+
+# Making a bar chart for weighted results
+library(ggplot2)
+
+top20_frequency <- head(word_frequency_sorted, 20)
+
+top20_frequency_df <- data.frame(
+  term = names(top20_frequency),
+  frequency = as.numeric(top20_frequency)
+)
+
+top20_frequency_df$term <- c(
+    "OpenAI",
+    "learning",
+    "generative",
+    "intelligence",
+    "LLM",
+    "machine",
+    "ChatGPT",
+    "model",
+    "agent",
+    "artificial",
+    "Trump",
+    "language",
+    "large",
+    "work",
+    "now",
+    "data",
+    "say",
+    "arXiv",
+    "super",
+    "people"
+  )
+
+ggplot(
+  top20_frequency_df,
+  aes(x = reorder(term, frequency), y = frequency)
+) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Most Frequently Discussed AI-Related Terms",
+    x = "Term",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+#Most frequently discussed AI-related terms are now visually represented on bar chart. OpenAI, learning and generative lead the terms. 
+
+
+
+
+# RQ2
+
+# Transpose TF-IDF so each row is one post.
+ai_cluster_data <- t(ai_tfidf_matrix)
+
+# Each TF-IDF row must correspond to the same row in ai_text.
+stopifnot(nrow(ai_cluster_data) == nrow(ai_text))
+
+# Remove empty TF-IDF rows from both datasets using the same index.
+nonempty <- rowSums(abs(ai_cluster_data)) > 0
+ai_cluster_data <- ai_cluster_data[nonempty, , drop = FALSE]
+clustered_text_data <- ai_text[nonempty, , drop = FALSE]
+
+# Normalize each post vector and calculate cosine distance.
+post_norms <- sqrt(rowSums(ai_cluster_data^2))
+stopifnot(all(post_norms > 0))
+norm_ai_cluster_data <- sweep(ai_cluster_data, 1, post_norms, "/")
+ai_cosine_distance <- dist(norm_ai_cluster_data, method = "euclidean")^2 / 2
+
+# Create a two-dimensional representation of posts.
+mds_ai <- cmdscale(ai_cosine_distance, k = 2)
+stopifnot(nrow(mds_ai) == nrow(ai_cluster_data))
+
+# Compare four and five clusters, then use k = 5 for RQ3 and RQ4.
+set.seed(3020)
+K4 <- kmeans(mds_ai, centers = 4, nstart = 10)
+table(K4$cluster)
+
+K5 <- kmeans(mds_ai, centers = 5, nstart = 10)
+table(K5$cluster)
+
+# Attach the five-cluster labels to their matching posts.
+stopifnot(nrow(clustered_text_data) == length(K5$cluster))
+clustered_text_data$cluster <- K5$cluster
+
+# Inspect the highest-weight terms in each cluster.
+for (cluster_id in 1:5) {
+  clusterposts <- ai_cluster_data[K5$cluster == cluster_id, , drop = FALSE]
+  clusterTermWeight <- colMeans(clusterposts)
+  cat("\nCluster", cluster_id, "top terms:\n")
+  print(head(sort(clusterTermWeight, decreasing = TRUE), 10))
+}
+
+# Plot the five clusters.
+plot(
+  mds_ai[, 1],
+  mds_ai[, 2],
+  col = K5$cluster,
+  pch = 19,
+  main = "AI Discussion Clusters",
+  xlab = "MDS Dimension 1",
+  ylab = "MDS Dimension 2"
+)
+
+legend(
+  "topright",
+  legend = paste("Cluster", 1:5),
+  col = 1:5,
+  pch = 19
+)
+#RQ3
+
+dim(clustered_text_data)
+names(clustered_text_data)
+
+aggregate(
+  like_count ~ cluster,
+  data = clustered_text_data,
+  FUN = mean
+)
+
+anova_model <- aov(
+  like_count ~ factor(cluster),
+  data = clustered_text_data
+)
+
+summary(anova_model)
+
+boxplot(
+  like_count ~ factor(cluster),
+  data = clustered_text_data,
+  xlab = "AI Discussion Cluster",
+  ylab = "Number of Likes",
+  main = "Like Engagement Across AI Discussion Clusters"
+)
+
+
+
+#RQ4
+c(
+  "Replies" = sum(!is.na(clustered_text_data$in_reply_to)),
+  "Quotes" = sum(!is.na(clustered_text_data$quotes)),
+  "Mentions" = sum(!sapply(clustered_text_data$mentions, is.null))
+)
+str(clustered_text_data[, c("in_reply_to", "quotes", "mentions")])
+head(
+  clustered_text_data[
+    !is.na(clustered_text_data$in_reply_to) |
+      !is.na(clustered_text_data$quotes),
+    c("author_handle", "in_reply_to", "quotes")
+  ],
+  10
+)
+str(clustered_text_data$post_data[1])
+clustered_text_data$mentions[
+  which(!sapply(clustered_text_data$mentions, is.null))[1]
+]
+str(clustered_text_data$author_data[1])
+
+author_map <- data.frame(
+  did = sapply(clustered_text_data$author_data, function(x) x$did),
+  handle = sapply(clustered_text_data$author_data, function(x) x$handle)
+)
+
+head(author_map)
+sum(author_map$did %in% unlist(clustered_text_data$mentions))
+
+sum(clustered_text_data$in_reply_to %in% clustered_text_data$uri, na.rm = TRUE)
+sum(clustered_text_data$quotes %in% clustered_text_data$uri, na.rm = TRUE)
+
+reply_target <- match(
+  clustered_text_data$in_reply_to,
+  clustered_text_data$uri
+)
+
+quote_target <- match(
+  clustered_text_data$quotes,
+  clustered_text_data$uri
+)
+
+sum(!is.na(reply_target))
+sum(!is.na(quote_target))
+
+reply_edges <- data.frame(
+  from = clustered_text_data$author_handle[!is.na(reply_target)],
+  to = clustered_text_data$author_handle[reply_target[!is.na(reply_target)]],
+  type = "reply"
+)
+
+quote_edges <- data.frame(
+  from = clustered_text_data$author_handle[!is.na(quote_target)],
+  to = clustered_text_data$author_handle[quote_target[!is.na(quote_target)]],
+  type = "quote"
+)
+
+interaction_edges <- rbind(
+  reply_edges,
+  quote_edges
+)
+
+nrow(interaction_edges)
+head(interaction_edges)
+
+interaction_edges <- interaction_edges[
+  interaction_edges$from != interaction_edges$to,
+]
+
+nrow(interaction_edges)
+
+library(igraph)
+
+g <- graph_from_data_frame(
+  interaction_edges,
+  directed = TRUE
+)
+
+vcount(g)
+ecount(g)
+
+centrality <- data.frame(
+  user = V(g)$name,
+  in_degree = degree(g, mode = "in"),
+  out_degree = degree(g, mode = "out"),
+  betweenness = betweenness(g, directed = TRUE)
+)
+
+centrality <- centrality[
+  order(-centrality$in_degree),
+]
+
+head(centrality, 10)
+
+centrality_out <- centrality[
+  order(-centrality$out_degree),
+]
+
+head(centrality_out, 10)
+
+components(g, mode = "weak")
+
+max(components(g, mode = "weak")$csize)
+max(components(g, mode = "weak")$csize) / vcount(g) * 100
+
+
+id_labels <- ifelse(
+  degree(g, mode = "in") >= 2,
+  V(g)$name,
+  NA
+)
+
+plot(
+  g,
+  vertex.size = 5 + degree(g, mode = "in") * 2,
+  vertex.label = id_labels,
+  vertex.label.cex = 0.65,
+  vertex.label.color = "black",
+  vertex.label.dist = 1.2,
+  edge.arrow.size = 0.25,
+  main = "AI Discussion Interaction Network"
+)
+```
+
+
+
+
